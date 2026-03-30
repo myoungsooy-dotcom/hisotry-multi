@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>영토 전쟁: 히스토리 에이지 멀티</title>
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         :root { --main: #bc4749; --sub: #386641; --bg: #f2e8cf; --gold: #f2cc8f; --white: #fffefb; --dark: #2b2d42; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: 'AppleMyungjo', serif; }
@@ -38,7 +38,7 @@
         <p>함께 입장할 방 이름을 입력하세요</p>
         <div style="width:100%; margin: 20px 0;">
             <input type="text" id="room-input" placeholder="예: 1234" maxlength="10">
-            <button class="main-btn" onclick="joinRoom()">전투 입장</button>
+            <button class="main-btn" id="join-btn" onclick="joinRoom()">전투 입장</button>
         </div>
         <p id="lobby-status" style="font-size:0.8rem; opacity:0.8;">방 이름을 맞추면 자동으로 대결이 시작됩니다.</p>
     </div>
@@ -64,7 +64,8 @@
 </div>
 
 <script>
-    const socket = io();
+    // 서버 연결 초기화
+    const socket = io(); 
     let currentRoom = "";
     let myHp = 100, peerHp = 100, curIdx = 0, lock = true;
 
@@ -123,20 +124,26 @@
     ];
 
     function joinRoom() {
-        const room = document.getElementById('room-input').value;
+        const roomInput = document.getElementById('room-input');
+        const room = roomInput.value.trim();
         if(!room) return alert("방 이름을 입력하세요.");
+        
         currentRoom = room;
+        // 서버에 방 참가 신호를 보냅니다.
         socket.emit('join-room', room);
-        document.getElementById('lobby-status').innerText = "상대방 접속을 대기 중...";
+        
+        document.getElementById('lobby-status').innerText = "서버 연결 시도 중...";
+        document.getElementById('join-btn').disabled = true;
     }
 
-    // 서버 신호 처리
+    // 서버 신호: 게임 시작 (두 명 모임)
     socket.on('game-start', () => {
         document.getElementById('lobby').style.display = 'none';
-        // 방장은 소켓 ID가 상대보다 앞선 사람으로 자동 결정 (임의 기준)
-        pickQ(); 
+        // 방에 먼저 들어온 사람이 문제를 출제하도록 타이밍 조절
+        setTimeout(pickQ, 500); 
     });
 
+    // 상대방 데이터 수신
     socket.on('peer-data', (data) => {
         if(data.type === 'next') {
             curIdx = data.idx;
@@ -150,8 +157,8 @@
 
     function pickQ() {
         curIdx = Math.floor(Math.random() * db.length);
-        // 내 화면을 먼저 바꾸고, 상대방에게도 똑같은 인덱스를 보냄
         renderQ();
+        // 내 화면의 인덱스를 상대에게 복제함
         socket.emit('game-data', { roomId: currentRoom, type: 'next', idx: curIdx });
     }
 
@@ -189,7 +196,7 @@
                 alert(myHp <= 0 ? "패배!" : "승리!");
                 location.reload();
             } else {
-                // 문제를 맞춘 사람이 다음 문제를 선택하고 동기화함
+                // 문제를 맞춘 사람이 다음 문제 권한을 가짐
                 if(idx === q.a) pickQ();
             }
         }, 1200);
@@ -205,7 +212,6 @@
     function showHit() {
         document.getElementById('game-container').classList.add('hit-shake');
         setTimeout(() => document.getElementById('game-container').classList.remove('hit-shake'), 300);
-        if(navigator.vibrate) navigator.vibrate(200);
     }
 </script>
 </body>
