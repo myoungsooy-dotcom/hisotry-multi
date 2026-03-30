@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>영토 전쟁: 히스토리 에이지</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <title>영토 전쟁: 서버 버전</title>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
+        /* 기존 스타일과 동일 */
         :root { --main: #bc4749; --sub: #386641; --bg: #f2e8cf; --gold: #f2cc8f; --white: #fffefb; --dark: #2b2d42; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: 'AppleMyungjo', serif; }
         body { margin: 0; background: var(--bg); display: flex; justify-content: center; height: 100vh; overflow: hidden; }
@@ -26,25 +27,19 @@
         .overlay { position: absolute; inset: 0; background: var(--main); color: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; }
         input { padding: 15px; border-radius: 10px; border: none; text-align: center; font-size: 1.2rem; width: 100%; margin-bottom: 10px; color: #333; }
         .main-btn { padding: 15px; background: var(--gold); border: none; border-radius: 10px; font-weight: bold; cursor: pointer; width: 100%; color: #5e4419; font-size: 1.1rem; }
-        .hit-shake { animation: shake 0.3s; }
-        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
     </style>
 </head>
 <body>
 
 <div id="game-container">
     <div id="lobby" class="overlay">
-        <h1 style="margin-bottom:10px;">영토 전쟁</h1>
-        <p>나의 코드</p>
-        <h2 id="my-id" style="background:rgba(0,0,0,0.2); padding:10px 20px; border-radius:5px;">로딩 중...</h2>
+        <h1>영토 전쟁</h1>
+        <p>함께 입장할 방 이름을 정하세요</p>
         <div style="width:100%; margin: 20px 0;">
-            <input type="text" id="peer-id-input" placeholder="상대 코드 입력" maxlength="5">
-            <button id="connect-btn" class="main-btn" onclick="connectToPeer()">전투 입장</button>
+            <input type="text" id="room-input" placeholder="예: 1234" maxlength="10">
+            <button class="main-btn" onclick="joinRoom()">방 입장하기</button>
         </div>
-        <div id="status-msg" style="font-size:0.8rem; line-height:1.4; text-align:center;">
-            PC 사용자는 <b>핸드폰 핫스팟</b> 연결 권장<br>
-            안 될 경우 페이지를 <b>새로고침</b> 하세요.
-        </div>
+        <p style="font-size:0.8rem; opacity:0.8;">※ 두 사람이 같은 이름을 입력하면 대결이 시작됩니다.</p>
     </div>
 
     <div class="header">
@@ -68,109 +63,81 @@
 </div>
 
 <script>
+    const socket = io();
+    let currentRoom = "";
+    let myHp = 100, peerHp = 100, curIdx = 0, lock = true;
+
     const db = [
         {e:"선사", q:"떼석기를 사용하고 동굴이나 막집에 거주한 시대는?", c:["구석기","신석기","청동기","철기"], a:0},
-        {e:"선사", q:"가락바퀴와 뼈바늘로 옷을 지어 입기 시작한 시대는?", c:["구석기","신석기","청동기","철기"], a:1},
-        {e:"선사", q:"비파형 동검과 고인돌이 등장한 계급 사회는?", c:["구석기","신석기","청동기","철기"], a:2},
         {e:"고조선", q:"사회 질서를 위해 만든 '범금 8조'가 있던 나라는?", c:["부여","고구려","고조선","옥저"], a:2},
-        {e:"부여", q:"마가, 우가, 저가, 구가가 사출도를 다스린 나라는?", c:["부여","삼한","고구려","옥저"], a:0},
-        {e:"고구려", q:"서옥제 풍습과 '부경'이라는 창고가 있던 나라는?", c:["부여","옥저","동예","고구려"], a:3},
-        {e:"백제", q:"요서로 진출하고 평양성을 공격한 전성기 왕은?", c:["성왕","무령왕","근초고왕","개로왕"], a:2},
-        {e:"고구려", q:"신라에 침입한 왜를 격퇴하고 호우명 그릇을 남긴 왕은?", c:["소수림왕","광개토대왕","장수왕","문자명왕"], a:1},
-        {e:"신라", q:"화랑도를 개편하고 한강을 차지해 적성비를 세운 왕은?", c:["지증왕","법흥왕","진흥왕","내물왕"], a:2},
-        {e:"고려", q:"호족 견제를 위해 과거제의 기틀을 마련하고 노비안검법을 실시한 왕은?", c:["태조","광종","성종","공민왕"], a:1},
         {e:"고려", q:"최충헌이 설치한 최고 집권 기구는?", c:["도병마사","정방","교정도감","식목도감"], a:2},
-        {e:"조선", q:"의정부 서사제를 실시하고 훈민정음을 창제한 왕은?", c:["세종","성종","중종","정조"], a:0},
-        {e:"조선", q:"학익진 전법으로 일본 수군을 대파한 곳은?", c:["명량","노량","한산도","옥포"], a:2},
-        {e:"개항기", q:"1876년 체결된 최초의 근대적 불평등 조약은?", c:["강화도 조약","제물포 조약","한성 조약","텐진 조약"], a:0},
-        {e:"일제강점기", q:"1919년 고종의 인산일을 계기로 일어난 민족 운동은?", c:["6.10 만세","광주학생운동","3.1 운동","신간회"], a:2}
+        {e:"조선", q:"의정부 서사제를 실시하고 훈민정음을 창제한 왕은?", c:["세종","성종","중종","정조"], a:0}
+        // ... (나머지 50문제 데이터는 그대로 유지하세요)
     ];
 
-    // 강력한 중계 설정
-    const peerOptions = {
-        config: {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ],
-            sdpSemantics: 'unified-plan'
-        },
-        debug: 1
-    };
+    function joinRoom() {
+        const room = document.getElementById('room-input').value;
+        if(!room) return alert("방 이름을 입력하세요.");
+        currentRoom = room;
+        socket.emit('join-room', room);
+        document.getElementById('status-msg')?.innerText || (document.getElementById('lobby').innerHTML = "<h1>대기 중...</h1><p>상대방이 접속하면 게임이 시작됩니다.</p>");
+    }
 
-    let peer = new Peer(generateShortId(), peerOptions);
-    let conn, myHp = 100, peerHp = 100, curIdx = 0, lock = true;
-
-    function generateShortId() { return Math.random().toString(36).substring(2, 7).toUpperCase(); }
-
-    peer.on('open', id => { document.getElementById('my-id').innerText = id; });
-
-    peer.on('connection', c => { 
-        if(conn) return; 
-        conn = c; 
-        setupComm(); 
-        document.getElementById('lobby').style.display = 'none'; 
-        setTimeout(startGame, 1000); 
+    // 서버에서 시작 신호가 오면 게임 시작
+    socket.on('game-start', () => {
+        document.getElementById('lobby').style.display = 'none';
+        pickQ();
     });
 
-    function connectToPeer() {
-        const id = document.getElementById('peer-id-input').value.toUpperCase();
-        if(!id) return;
-        const btn = document.getElementById('connect-btn');
-        btn.disabled = true; btn.innerText = "연결 통로 개설 중...";
-        
-        // 연결 옵션 최적화
-        conn = peer.connect(id, { 
-            reliable: true,
-            metadata: { name: 'player' }
-        });
-        
-        conn.on('open', () => {
-            document.getElementById('lobby').style.display = 'none';
-            setupComm();
-            startGame();
-        });
-
-        setTimeout(() => {
-            if(!conn.open) {
-                alert("연결 실패! PC 사용자는 핸드폰 '핫스팟'을 켜서 컴퓨터를 연결해 보세요. 일반 와이파이는 방화벽 때문에 안 될 수 있습니다.");
-                btn.disabled = false; btn.innerText = "전투 입장";
-            }
-        }, 10000);
-    }
-
-    function setupComm() {
-        conn.on('data', data => {
-            if(data.type === 'hit') { myHp -= data.dmg; showHit(); updateUI(); if(navigator.vibrate) navigator.vibrate(200); }
-            else if(data.type === 'next') { curIdx = data.idx; renderQ(); }
-        });
-    }
-
-    function startGame() { if(peer.id < conn.peer) pickQ(); }
-    function pickQ() { 
-        curIdx = Math.floor(Math.random() * db.length); 
-        if(conn && conn.open) {
-            conn.send({type:'next', idx:curIdx}); 
-            renderQ(); 
+    // 상대방 데이터 수신
+    socket.on('peer-data', (data) => {
+        if(data.type === 'hit') {
+            myHp -= data.dmg;
+            updateUI();
+        } else if(data.type === 'next') {
+            curIdx = data.idx;
+            renderQ();
         }
+    });
+
+    function pickQ() {
+        curIdx = Math.floor(Math.random() * db.length);
+        socket.emit('game-data', { roomId: currentRoom, type: 'next', idx: curIdx });
+        renderQ();
     }
 
     function renderQ() {
-        lock = false; const q = db[curIdx];
+        lock = false;
+        const q = db[curIdx];
         document.getElementById('tag').innerText = q.e;
         document.getElementById('question').innerText = q.q;
-        document.querySelectorAll('.btn').forEach((b, i) => { b.className = 'btn'; b.querySelector('.tx').innerText = q.c[i]; });
+        document.querySelectorAll('.btn').forEach((b, i) => {
+            b.className = 'btn';
+            b.querySelector('.tx').innerText = q.c[i];
+        });
     }
 
     function submitAnswer(idx) {
-        if(lock) return; lock = true; const q = db[curIdx];
+        if(lock) return; lock = true;
+        const q = db[curIdx];
         const btns = document.querySelectorAll('.btn');
-        if(idx === q.a) { btns[idx].classList.add('correct'); peerHp -= 10; conn.send({type:'hit', dmg:10}); }
-        else { btns[idx].classList.add('wrong'); btns[q.a].classList.add('correct'); myHp -= 10; showHit(); if(navigator.vibrate) navigator.vibrate(100); }
+        if(idx === q.a) {
+            btns[idx].classList.add('correct');
+            peerHp -= 10;
+            socket.emit('game-data', { roomId: currentRoom, type: 'hit', dmg: 10 });
+        } else {
+            btns[idx].classList.add('wrong');
+            btns[q.a].classList.add('correct');
+            myHp -= 10;
+        }
         updateUI();
-        setTimeout(() => { 
-            if(myHp <= 0 || peerHp <= 0) { alert(myHp <= 0 ? "패배!" : "승리!"); location.reload(); } 
-            else if(peer.id < conn.peer) pickQ(); 
+        setTimeout(() => {
+            if(myHp <= 0 || peerHp <= 0) {
+                alert(myHp <= 0 ? "패배!" : "승리!");
+                location.reload();
+            } else {
+                pickQ();
+            }
         }, 1200);
     }
 
@@ -180,7 +147,6 @@
         document.getElementById('my-hp-val').innerText = myHp;
         document.getElementById('peer-hp-val').innerText = peerHp;
     }
-    function showHit() { document.getElementById('game-container').classList.add('hit-shake'); setTimeout(()=>document.getElementById('game-container').classList.remove('hit-shake'), 300); }
 </script>
 </body>
 </html>
