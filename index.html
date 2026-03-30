@@ -12,7 +12,7 @@
         #game-container { width: 100%; max-width: 450px; background: var(--white); border: 8px double var(--main); display: flex; flex-direction: column; position: relative; }
         .header { padding: 15px; border-bottom: 2px solid var(--main); background: rgba(188, 71, 73, 0.05); }
         .hp-bar { width: 100%; height: 15px; background: #ddd; border-radius: 10px; overflow: hidden; border: 1px solid #999; margin: 5px 0; }
-        .hp-fill { height: 100%; width: 100%; transition: 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
+        .hp-fill { height: 100%; width: 100%; transition: 0.4s; }
         #my-hp-bar { background: var(--sub); }
         #peer-hp-bar { background: var(--main); }
         .hp-label { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: bold; }
@@ -20,13 +20,13 @@
         #tag { background: var(--gold); padding: 4px 15px; border-radius: 20px; margin-bottom: 15px; font-weight: bold; border: 1px solid #d4a373; }
         #question { font-size: 1.2rem; line-height: 1.6; color: var(--dark); font-weight: 700; word-break: keep-all; }
         #btns { padding: 15px; display: grid; gap: 12px; background: #f8f4e9; }
-        .btn { padding: 16px; border: 2px solid #ccc; background: #fff; border-radius: 10px; font-size: 1.05rem; text-align: left; cursor: pointer; box-shadow: 0 3px 0 #ccc; }
-        .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #ccc; }
+        .btn { padding: 16px; border: 2px solid #ccc; background: #fff; border-radius: 10px; font-size: 1.05rem; text-align: left; cursor: pointer; }
         .correct { background: #d8f3dc !important; border-color: #52b788 !important; }
         .wrong { background: #ffdada !important; border-color: #e07a5f !important; }
         .overlay { position: absolute; inset: 0; background: var(--main); color: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; }
-        input { padding: 15px; border-radius: 10px; border: none; text-align: center; font-size: 1.2rem; width: 100%; margin-bottom: 10px; }
+        input { padding: 15px; border-radius: 10px; border: none; text-align: center; font-size: 1.2rem; width: 100%; margin-bottom: 10px; color: #333; }
         .main-btn { padding: 15px; background: var(--gold); border: none; border-radius: 10px; font-weight: bold; cursor: pointer; width: 100%; color: #5e4419; font-size: 1.1rem; }
+        .main-btn:disabled { background: #ccc; cursor: not-allowed; }
         .hit-shake { animation: shake 0.3s; }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
     </style>
@@ -40,9 +40,9 @@
         <h2 id="my-id" style="background:rgba(0,0,0,0.2); padding:10px 20px; border-radius:5px;">연결 중...</h2>
         <div style="width:100%; margin: 20px 0;">
             <input type="text" id="peer-id-input" placeholder="상대 코드 입력" maxlength="5">
-            <button class="main-btn" onclick="connectToPeer()">전투 입장</button>
+            <button id="connect-btn" class="main-btn" onclick="connectToPeer()">전투 입장</button>
         </div>
-        <p style="font-size:0.8rem; opacity:0.8;">※ LTE/5G 환경에서 연결이 더 잘 됩니다.</p>
+        <p id="status-msg" style="font-size:0.8rem; opacity:0.8;">상대 코드가 뜨면 입력 후 입장하세요.</p>
     </div>
 
     <div class="header">
@@ -54,7 +54,7 @@
 
     <div id="feed">
         <div id="tag">시대</div>
-        <div id="question">연결을 기다리는 중...</div>
+        <div id="question">준비 중...</div>
     </div>
 
     <div id="btns">
@@ -66,8 +66,8 @@
 </div>
 
 <script>
+    // --- 문제 DB (50문항 이상 유지) ---
     const db = [
-        // 1. 선사~고대 (10)
         {e:"선사", q:"떼석기를 사용하고 동굴이나 막집에 거주한 시대는?", c:["구석기","신석기","청동기","철기"], a:0},
         {e:"선사", q:"가락바퀴와 뼈바늘로 옷을 지어 입기 시작한 시대는?", c:["구석기","신석기","청동기","철기"], a:1},
         {e:"선사", q:"비파형 동검과 고인돌이 등장한 계급 사회는?", c:["구석기","신석기","청동기","철기"], a:2},
@@ -78,7 +78,6 @@
         {e:"백제", q:"요서로 진출하고 평양성을 공격한 전성기 왕은?", c:["성왕","무령왕","근초고왕","개로왕"], a:2},
         {e:"고구려", q:"신라에 침입한 왜를 격퇴하고 호우명 그릇을 남긴 왕은?", c:["소수림왕","광개토대왕","장수왕","문자명왕"], a:1},
         {e:"신라", q:"화랑도를 개편하고 한강을 차지해 적성비를 세운 왕은?", c:["지증왕","법흥왕","진흥왕","내물왕"], a:2},
-        // 2. 고려 (10)
         {e:"고려", q:"호족 견제를 위해 과거제를 처음 실시한 왕은?", c:["태조","광종","성종","공민왕"], a:1},
         {e:"고려", q:"시무 28조를 수용해 유교 통치 체제를 정비한 왕은?", c:["광종","성종","현종","문종"], a:1},
         {e:"고려", q:"최충헌이 설치한 최고 집권 기구는?", c:["도병마사","정방","교정도감","식목도감"], a:2},
@@ -89,7 +88,6 @@
         {e:"고려", q:"금 정벌과 서경 천도를 주장하며 난을 일으킨 승려는?", c:["묘청","김부식","최충","의천"], a:0},
         {e:"고려", q:"목화씨를 가져와 의생활 혁명을 가져온 인물은?", c:["문익점","최무선","지눌","의천"], a:0},
         {e:"고려", q:"화통도감을 설치해 왜구를 격퇴한 인물은?", c:["최영","최무선","이성계","임난수"], a:1},
-        // 3. 조선 전기~중기 (10)
         {e:"조선", q:"6조 직계제를 실시하고 호패법을 시행한 왕은?", c:["태조","태종","세종","세조"], a:1},
         {e:"조선", q:"의정부 서사제를 실시하고 훈민정음을 창제한 왕은?", c:["세종","성종","중종","정조"], a:0},
         {e:"조선", q:"기본 법전인 '경국대전'을 완성해 반포한 왕은?", c:["세종","세조","성종","연산군"], a:2},
@@ -100,7 +98,6 @@
         {e:"조선", q:"현직 관리에게만 수조권을 준 '직전법'을 실시한 왕은?", c:["태종","세종","세조","성종"], a:2},
         {e:"조선", q:"조광조가 주장한 관리 추천 제도인 '현량과'가 실시된 왕은?", c:["중종","명종","선조","광해군"], a:0},
         {e:"조선", q:"임진왜란 중 곽재우, 고경명 등이 자발적으로 조직한 군대는?", c:["훈련도감","의병","별기군","삼별초"], a:1},
-        // 4. 조선 후기~개항기 (10)
         {e:"조선 후기", q:"수원 화성을 건설하고 장용영을 설치한 왕은?", c:["영조","정조","순조","철종"], a:1},
         {e:"조선 후기", q:"탕평비를 세우고 서원을 정리한 왕은?", c:["숙종","영조","정조","고종"], a:1},
         {e:"조선 후기", q:"'목민심서'를 저술한 대표적 실학자는?", c:["박지원","박제가","정약용","이익"], a:2},
@@ -111,7 +108,6 @@
         {e:"대한제국", q:"고종이 황제 즉위식을 거행하고 선포한 국호는?", c:["대한민국","조선공화국","대한제국","고려국"], a:2},
         {e:"개항기", q:"일본의 경제 침탈에 맞선 '나랏빚 갚기' 운동은?", c:["물산장려운동","국채보상운동","형평운동","브나로드"], a:1},
         {e:"대한제국", q:"광무개혁의 원칙으로 옛것을 근본 삼고 새것을 참작함은?", c:["동도서기","화혼양재","구본신참","중체서용"], a:2},
-        // 5. 근현대 (12)
         {e:"일제강점기", q:"1919년 고종의 인산일을 계기로 일어난 민족 운동은?", c:["6.10 만세","광주학생운동","3.1 운동","신간회"], a:2},
         {e:"일제강점기", q:"김원봉이 조직해 파괴와 암살을 펼친 단체는?", c:["의열단","한인 애국단","한국 광복군","조선 의용대"], a:0},
         {e:"일제강점기", q:"민족주의와 사회주의 세력이 연합한 최대 단체는?", c:["신민회","보안회","신간회","근우회"], a:2},
@@ -126,53 +122,117 @@
         {e:"현대", q:"제주에서 발생한 소요 사태와 진압 과정의 희생자를 기리는 사건은?", c:["대구 10.1","여수 순천 10.19","제주 4.3","보도연맹"], a:2}
     ];
 
+    // --- PeerJS 설정 (STUN 서버 추가) ---
     const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
     let peer = new Peer(generateShortId(), { config });
     let conn, myHp = 100, peerHp = 100, curIdx = 0, lock = true;
 
     function generateShortId() { return Math.random().toString(36).substring(2, 7).toUpperCase(); }
 
-    peer.on('open', id => { document.getElementById('my-id').innerText = id; });
+    // 내 ID 생성 시
+    peer.on('open', id => { 
+        document.getElementById('my-id').innerText = id; 
+        document.getElementById('status-msg').innerText = "상대방에게 코드를 알려주세요.";
+    });
+
+    // 상대방이 나에게 연결을 시도할 때
     peer.on('connection', c => { 
         if(conn) return; 
         conn = c; 
         setupComm(); 
         document.getElementById('lobby').style.display = 'none'; 
-        setTimeout(startGame, 500); 
+        setTimeout(startGame, 800); 
     });
 
+    // 내가 상대방에게 연결할 때
     function connectToPeer() {
         const id = document.getElementById('peer-id-input').value.toUpperCase();
-        if(!id) return;
+        if(!id) return alert("코드를 입력하세요.");
+        
+        const btn = document.getElementById('connect-btn');
+        btn.disabled = true;
+        btn.innerText = "연결 시도 중...";
+
         conn = peer.connect(id);
-        setupComm();
-        conn.on('open', () => { document.getElementById('lobby').style.display = 'none'; startGame(); });
+        
+        // 연결 성공 감지
+        conn.on('open', () => {
+            document.getElementById('lobby').style.display = 'none';
+            setupComm();
+            startGame();
+        });
+
+        // 7초 동안 연결 안 되면 리셋
+        setTimeout(() => {
+            if(!conn.open) {
+                alert("연결에 실패했습니다. 코드를 확인하거나 LTE로 시도하세요.");
+                btn.disabled = false;
+                btn.innerText = "전투 입장";
+            }
+        }, 7000);
     }
 
     function setupComm() {
         conn.on('data', data => {
-            if(data.type === 'hit') { myHp -= data.dmg; showHit(); updateUI(); if(navigator.vibrate) navigator.vibrate(200); }
-            else if(data.type === 'next') { curIdx = data.idx; renderQ(); }
+            if(data.type === 'hit') { 
+                myHp -= data.dmg; 
+                showHit(); 
+                updateUI(); 
+                if(navigator.vibrate) navigator.vibrate(200); 
+            }
+            else if(data.type === 'next') { 
+                curIdx = data.idx; 
+                renderQ(); 
+            }
         });
-        conn.on('close', () => { alert("연결 끊김"); location.reload(); });
+        conn.on('close', () => { alert("상대방과 연결이 종료되었습니다."); location.reload(); });
     }
 
     function startGame() { if(peer.id < conn.peer) pickQ(); }
-    function pickQ() { curIdx = Math.floor(Math.random() * db.length); conn.send({type:'next', idx:curIdx}); renderQ(); }
+    function pickQ() { 
+        curIdx = Math.floor(Math.random() * db.length); 
+        conn.send({type:'next', idx:curIdx}); 
+        renderQ(); 
+    }
+
     function renderQ() {
-        lock = false; const q = db[curIdx];
+        lock = false; 
+        const q = db[curIdx];
         document.getElementById('tag').innerText = q.e;
         document.getElementById('question').innerText = q.q;
-        document.querySelectorAll('.btn').forEach((b, i) => { b.className = 'btn'; b.querySelector('.tx').innerText = q.c[i]; });
+        document.querySelectorAll('.btn').forEach((b, i) => { 
+            b.className = 'btn'; 
+            b.querySelector('.tx').innerText = q.c[i]; 
+        });
     }
 
     function submitAnswer(idx) {
-        if(lock) return; lock = true; const q = db[curIdx];
+        if(lock) return; 
+        lock = true; 
+        const q = db[curIdx];
         const btns = document.querySelectorAll('.btn');
-        if(idx === q.a) { btns[idx].classList.add('correct'); peerHp -= 10; conn.send({type:'hit', dmg:10}); }
-        else { btns[idx].classList.add('wrong'); btns[q.a].classList.add('correct'); myHp -= 10; showHit(); if(navigator.vibrate) navigator.vibrate(100); }
+        
+        if(idx === q.a) { 
+            btns[idx].classList.add('correct'); 
+            peerHp -= 10; 
+            conn.send({type:'hit', dmg:10}); 
+        } else { 
+            btns[idx].classList.add('wrong'); 
+            btns[q.a].classList.add('correct'); 
+            myHp -= 10; 
+            showHit(); 
+            if(navigator.vibrate) navigator.vibrate(100); 
+        }
         updateUI();
-        setTimeout(() => { if(myHp<=0 || peerHp<=0) { alert(myHp<=0?"패배!":"승리!"); location.reload(); } else if(peer.id < conn.peer) pickQ(); }, 1200);
+        
+        setTimeout(() => { 
+            if(myHp <= 0 || peerHp <= 0) { 
+                alert(myHp <= 0 ? "영토를 모두 잃었습니다 (패배)" : "천하를 통일했습니다 (승리!)"); 
+                location.reload(); 
+            } else if(peer.id < conn.peer) {
+                pickQ(); 
+            }
+        }, 1300);
     }
 
     function updateUI() {
@@ -181,7 +241,10 @@
         document.getElementById('my-hp-val').innerText = myHp;
         document.getElementById('peer-hp-val').innerText = peerHp;
     }
-    function showHit() { document.getElementById('game-container').classList.add('hit-shake'); setTimeout(()=>document.getElementById('game-container').classList.remove('hit-shake'), 300); }
+    function showHit() { 
+        document.getElementById('game-container').classList.add('hit-shake'); 
+        setTimeout(()=>document.getElementById('game-container').classList.remove('hit-shake'), 300); 
+    }
 </script>
 </body>
 </html>
