@@ -40,7 +40,7 @@
             <input type="text" id="room-input" placeholder="예: 1234" maxlength="10">
             <button class="main-btn" id="join-btn" onclick="joinRoom()">전투 입장</button>
         </div>
-        <p id="lobby-status" style="font-size:0.8rem; opacity:0.8;">방 이름을 맞추면 자동으로 대결이 시작됩니다.</p>
+        <p id="lobby-status" style="font-size:0.8rem; opacity:0.8;">상대방과 같은 방 이름을 입력하세요.</p>
     </div>
 
     <div class="header">
@@ -52,7 +52,7 @@
 
     <div id="feed">
         <div id="tag">시대</div>
-        <div id="question">상대를 기다리는 중...</div>
+        <div id="question">준비 중...</div>
     </div>
 
     <div id="btns">
@@ -64,12 +64,10 @@
 </div>
 
 <script>
-    // 서버 연결 초기화
-    const socket = io(); 
+    const socket = io();
     let currentRoom = "";
     let myHp = 100, peerHp = 100, curIdx = 0, lock = true;
 
-    // 문제 데이터 DB (전체 50문항)
     const db = [
         {e:"선사", q:"떼석기를 사용하고 동굴이나 막집에 거주한 시대는?", c:["구석기","신석기","청동기","철기"], a:0},
         {e:"선사", q:"가락바퀴와 뼈바늘로 옷을 지어 입기 시작한 시대는?", c:["구석기","신석기","청동기","철기"], a:1},
@@ -124,43 +122,72 @@
     ];
 
     function joinRoom() {
-        const roomInput = document.getElementById('room-input');
-        const room = roomInput.value.trim();
+        const room = document.getElementById('room-input').value.trim();
         if(!room) return alert("방 이름을 입력하세요.");
-        
         currentRoom = room;
-        // 서버에 방 참가 신호를 보냅니다.
         socket.emit('join-room', room);
-        
-        document.getElementById('lobby-status').innerText = "서버 연결 시도 중...";
+        document.getElementById('lobby-status').innerText = "상대방 접속을 기다리는 중...";
         document.getElementById('join-btn').disabled = true;
     }
 
-    // 서버 신호: 게임 시작 (두 명 모임)
+    // [서버 신호] 게임 시작 시
     socket.on('game-start', () => {
         document.getElementById('lobby').style.display = 'none';
-        // 방에 먼저 들어온 사람이 문제를 출제하도록 타이밍 조절
-        setTimeout(pickQ, 500); 
+        // 방장(서버 기준 첫번째 소켓)이 문제를 선택해서 전파
+        socket.emit('game-data', { roomId: currentRoom, type: 'req-next' });
     });
 
-    // 상대방 데이터 수신
+    // [서버 신호] 데이터 수신 통합 처리
     socket.on('peer-data', (data) => {
+        const btns = document.querySelectorAll('.btn');
+        const q = db[curIdx];
+
         if(data.type === 'next') {
+            // 강제 다음 문제 이동
             curIdx = data.idx;
             renderQ();
-        } else if(data.type === 'hit') {
-            myHp -= data.dmg;
-            showHit();
+        } 
+        else if(data.type === 'result') {
+            // 누군가 정답/오답을 눌렀을 때 연출 동기화
+            lock = true; 
+            if(data.isCorrect) {
+                // 공격한 사람/받은 사람 구분하여 HP 차감
+                if(data.sender === socket.id) {
+                    btns[data.choiceIdx].classList.add('correct');
+                    peerHp -= 10;
+                } else {
+                    btns[q.a].classList.add('correct');
+                    myHp -= 10;
+                    showHit();
+                }
+            } else {
+                // 오답일 때 연출
+                if(data.sender === socket.id) {
+                    btns[data.choiceIdx].classList.add('wrong');
+                    btns[q.a].classList.add('correct');
+                    myHp -= 10;
+                    showHit();
+                } else {
+                    // 상대가 틀렸을 때 나도 상대의 오답 연출을 봄
+                    btns[data.choiceIdx].classList.add('wrong');
+                    btns[q.a].classList.add('correct');
+                    peerHp -= 10;
+                }
+            }
             updateUI();
+
+            // 1.2초 뒤에 무조건 다음 문제 (방장이 대표로 요청)
+            setTimeout(() => {
+                if(myHp <= 0 || peerHp <= 0) {
+                    alert(myHp <= 0 ? "패배!" : "승리!");
+                    location.reload();
+                } else {
+                    // 서버에 새로운 문제를 요청 (중복 호출 방지를 위해 한 명만 요청해도 됨)
+                    socket.emit('game-data', { roomId: currentRoom, type: 'req-next' });
+                }
+            }, 1200);
         }
     });
-
-    function pickQ() {
-        curIdx = Math.floor(Math.random() * db.length);
-        renderQ();
-        // 내 화면의 인덱스를 상대에게 복제함
-        socket.emit('game-data', { roomId: currentRoom, type: 'next', idx: curIdx });
-    }
 
     function renderQ() {
         lock = false;
@@ -175,31 +202,18 @@
 
     function submitAnswer(idx) {
         if(lock) return;
-        lock = true;
+        lock = true; // 중복 클릭 방지
         const q = db[curIdx];
-        const btns = document.querySelectorAll('.btn');
-
-        if(idx === q.a) {
-            btns[idx].classList.add('correct');
-            peerHp -= 10;
-            socket.emit('game-data', { roomId: currentRoom, type: 'hit', dmg: 10 });
-        } else {
-            btns[idx].classList.add('wrong');
-            btns[q.a].classList.add('correct');
-            myHp -= 10;
-            showHit();
-        }
-        updateUI();
-
-        setTimeout(() => {
-            if(myHp <= 0 || peerHp <= 0) {
-                alert(myHp <= 0 ? "패배!" : "승리!");
-                location.reload();
-            } else {
-                // 문제를 맞춘 사람이 다음 문제 권한을 가짐
-                if(idx === q.a) pickQ();
-            }
-        }, 1200);
+        const isCorrect = (idx === q.a);
+        
+        // 내가 누른 결과를 서버로 전송 (나와 상대 모두에게 전달됨)
+        socket.emit('game-data', { 
+            roomId: currentRoom, 
+            type: 'result', 
+            isCorrect: isCorrect,
+            choiceIdx: idx,
+            sender: socket.id
+        });
     }
 
     function updateUI() {
@@ -212,6 +226,7 @@
     function showHit() {
         document.getElementById('game-container').classList.add('hit-shake');
         setTimeout(() => document.getElementById('game-container').classList.remove('hit-shake'), 300);
+        if(navigator.vibrate) navigator.vibrate(200);
     }
 </script>
 </body>
